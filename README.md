@@ -51,7 +51,7 @@ OpenAI 官方 API
 
 ## 开发和打包
 
-从源码运行需要 Windows x64 和 Node.js 24 或更新版本。克隆后运行 `.\API-Manager.cmd`。构建并验证发布包需用 Python 3.11 或更新版本：
+从源码运行需要 Windows x64 和 Node.js 24.6 或更新版本。克隆后运行 `.\API-Manager.cmd`。构建并验证发布包需用 Python 3.11 或更新版本：
 
 ```powershell
 node --test tests/test-proxy.mjs tests/test-manager.mjs

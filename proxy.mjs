@@ -49,10 +49,11 @@ function matchesToken(actual, expected) {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-function reply(res, status, code) {
+function reply(res, status, code, networkCode) {
   if (res.headersSent || res.destroyed) return;
   res.writeHead(status, { 'content-type': 'application/json', 'cache-control': 'no-store' });
-  res.end(JSON.stringify({ error: { type: 'local_proxy_error', code, message: code } }));
+  res.end(JSON.stringify({ error: { type: 'local_proxy_error', code, message: code,
+    network_code: networkCode } }));
 }
 
 function clientKind(headers) {
@@ -121,6 +122,8 @@ export function createProxy({ apiKey, localToken, instanceId = randomUUID(),
     throw new Error('Only official OpenAI or a loopback mock upstream is allowed');
   }
   const transport = upstream.protocol === 'https:' ? https : http;
+  // Scope the configured proxy to OpenAI HTTPS requests. Local HTTP mocks stay on loopback.
+  const agent = new transport.Agent({ keepAlive: true, proxyEnv: transport === https ? process.env : undefined });
   const server = http.createServer(async (req, res) => {
     // Browser pages cannot use this as a cross-origin API relay.
     if (req.headers.origin) return reply(res, 403, 'browser_origin_not_allowed');
@@ -201,10 +204,11 @@ export function createProxy({ apiKey, localToken, instanceId = randomUUID(),
       }
       const upstreamRes = await new Promise((resolveResponse, reject) => {
         upstreamReq = transport.request(new URL(endpoint, upstream), {
-          method: req.method, headers: prepared.headers,
+          method: req.method, headers: prepared.headers, agent,
         }, resolveResponse);
         upstreamReq.on('error', reject);
-        upstreamReq.setTimeout(300_000, () => upstreamReq.destroy(new Error('upstream_timeout')));
+        upstreamReq.setTimeout(300_000, () => upstreamReq.destroy(
+          Object.assign(new Error('upstream_timeout'), { code: 'ETIMEDOUT' })));
         if (res.destroyed) upstreamReq.destroy();
         else upstreamReq.end(body);
       });
@@ -221,7 +225,11 @@ export function createProxy({ apiKey, localToken, instanceId = randomUUID(),
     } catch (error) {
       record.proxy_error = error.status ? error.message :
         (res.destroyed ? 'client_disconnected' : 'upstream_connection_or_stream_error');
-      if (!res.headersSent) reply(res, error.status ?? 502, record.proxy_error);
+      // Keep a machine-readable error code without logging URLs, proxy credentials, or raw messages.
+      if (record.proxy_error === 'upstream_connection_or_stream_error' && /^[A-Z][A-Z0-9_]{1,63}$/.test(error.code ?? '')) {
+        record.network_code = error.code;
+      }
+      if (!res.headersSent) reply(res, error.status ?? 502, record.proxy_error, record.network_code);
       else res.destroy();
       abort();
     } finally {
@@ -239,6 +247,7 @@ export function createProxy({ apiKey, localToken, instanceId = randomUUID(),
   });
   server.requestTimeout = 300_000;
   server.headersTimeout = 60_000;
+  server.on('close', () => agent.destroy());
   server.on('upgrade', (_req, socket) => {
     socket.end('HTTP/1.1 426 Upgrade Required\r\nConnection: close\r\nContent-Length: 0\r\n\r\n');
   });

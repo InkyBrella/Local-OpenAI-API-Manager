@@ -170,7 +170,16 @@ function Select-ApiModel {
                 Where-Object { $_ -is [string] -and $_ -cmatch $modelIdPattern } | Sort-Object -Unique)
             $listMessage = '当前 Key 的模型列表为空。'
         } catch {
-            $listMessage = "获取模型失败。$($_.Exception.Message)"
+            $failure = $_
+            $listMessage = "获取模型失败。$($failure.Exception.Message)"
+            if ($failure.ErrorDetails -and $failure.ErrorDetails.Message) {
+                try {
+                    $detail = ($failure.ErrorDetails.Message | ConvertFrom-Json).error
+                    if ($detail.type -ceq 'local_proxy_error' -and $detail.network_code -cmatch '^[A-Z][A-Z0-9_]{1,63}$') {
+                        $listMessage += "  网络错误：$($detail.network_code)"
+                    }
+                } catch { } # Some non-local errors do not contain JSON.
+            }
         }
     }
 
@@ -295,7 +304,11 @@ function Show-Dashboard {
         $at = [TimeZoneInfo]::ConvertTime([DateTimeOffset]::Parse($row.time), $displayTimeZone).ToString('HH:mm:ss')
         $color = if ($row.status -ge 200 -and $row.status -lt 300 -and -not $row.PSObject.Properties['proxy_error']) { 'Green' } else { 'Yellow' }
         Write-Host ($rowFormat -f $at, $row.status, ($row.duration_ms.ToString() + 'ms'), $row.mode, $client, $row.endpoint, $models[$i], ('[{0}]' -f $row.credential_name)) -ForegroundColor $color
-        if ($row.PSObject.Properties['proxy_error']) { Write-Host ('           ' + $row.proxy_error) -ForegroundColor DarkYellow }
+        if ($row.PSObject.Properties['proxy_error']) {
+            $detail = $row.proxy_error
+            if ($row.network_code) { $detail += " ($($row.network_code))" }
+            Write-Host ('           ' + $detail) -ForegroundColor DarkYellow
+        }
     }
     Write-Host ''
     Write-Host '  [1] 添加/替换 API Key       [2] 选择当前 Key'

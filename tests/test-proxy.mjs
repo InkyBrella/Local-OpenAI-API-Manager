@@ -212,6 +212,31 @@ try {
     assert.equal(requests.at(-1).url, '/v1/responses/compact');
   });
 
+  await test('reports a refused upstream connection for model listing without exposing credentials', async () => {
+    const closed = http.createServer();
+    await listen(closed);
+    const closedPort = closed.address().port;
+    await new Promise(resolve => closed.close(resolve));
+    const offline = createProxy({ apiKey, localToken, upstreamBase: `http://127.0.0.1:${closedPort}/`,
+      audit: record => audit.push(record) });
+    await listen(offline);
+    try {
+      const response = await fetch(`http://127.0.0.1:${offline.address().port}/v1/models`,
+        { headers: { authorization: `Bearer ${localToken}` } });
+      assert.equal(response.status, 502);
+      assert.deepEqual((await response.json()).error, {
+        type: 'local_proxy_error', code: 'upstream_connection_or_stream_error',
+        message: 'upstream_connection_or_stream_error', network_code: 'ECONNREFUSED',
+      });
+      assert.equal(audit.at(-1).network_code, 'ECONNREFUSED');
+      const record = JSON.stringify(audit.at(-1));
+      assert.ok(!record.includes(apiKey) && !record.includes(localToken));
+    } finally {
+      offline.closeAllConnections();
+      await new Promise(resolve => offline.close(resolve));
+    }
+  });
+
   await test('client cancellation closes the upstream stream', async () => {
     const stopped = new Promise(resolve => { cancelObserved = resolve; });
     const res = await post('/v1/responses', { input: 'cancel', stream: true });

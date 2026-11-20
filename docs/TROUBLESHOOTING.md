@@ -1,4 +1,17 @@
-# 桌面 App 排查
+# 接入排查
+
+## 获取模型时返回 502
+
+如果「最近请求」显示 `models 502`，下一行是 `upstream_connection_or_stream_error`，说明管理器已收到本地请求，连接 OpenAI 时发生了错误。新版会在后面显示具体网络错误码。`ENOTFOUND` 表示 DNS 解析失败，`ETIMEDOUT` 表示超时，`ERR_PROXY_TUNNEL` 表示 HTTP 代理隧道未建立。证书校验失败时，检查网络代理使用的证书是否已由你信任并正确安装到 Windows 证书存储。
+
+管理器会优先使用 `HTTPS_PROXY`，未设置时读取 Windows 针对 OpenAI 地址解析出的系统 HTTP(S) 代理，并遵循 `NO_PROXY`。如果可用的代理只在其他应用里单独配置，可以在解压目录打开 PowerShell，按实际地址设置受信任的 HTTP 代理后启动：
+
+```powershell
+$env:HTTPS_PROXY = 'http://127.0.0.1:7890'
+.\API-Manager.cmd
+```
+
+`7890` 只是示例，请填写该代理的 **HTTP 或 Mixed 端口**。重新打开管理器后按 **M** 验证。若仍有错误，排查时提供状态、网络错误码和 Endpoint 即可。
 
 ## CLI 可以请求，桌面 App 返回 422
 

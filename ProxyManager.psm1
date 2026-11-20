@@ -7,26 +7,39 @@ function Resolve-ProxyNode {
     $nodePath = Join-Path $PSScriptRoot 'runtime\win-x64\node.exe'
     if (-not (Test-Path -LiteralPath $nodePath -PathType Leaf)) {
         $systemNode = Get-Command node.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
-        if (-not $systemNode) { throw 'Node.js not found. Extract the complete Windows package, or install Node.js 24 or newer.' }
+        if (-not $systemNode) { throw 'Node.js not found. Extract the complete Windows package, or install Node.js 24.6 or newer.' }
         $nodePath = $systemNode.Source
     }
     $version = & $nodePath --version
-    if ($LASTEXITCODE -ne 0 -or $version -notmatch '^v(\d+)\.') { throw "Could not start Node.js: $nodePath" }
-    if ([int]$Matches[1] -lt 24) { throw "Node.js 24 or newer is required. Found $version at $nodePath." }
+    if ($LASTEXITCODE -ne 0 -or $version -notmatch '^v(\d+\.\d+\.\d+)') { throw "Could not start Node.js: $nodePath" }
+    if ([version]$Matches[1] -lt [version]'24.6.0') { throw "Node.js 24.6 or newer is required. Found $version at $nodePath." }
     return $nodePath
 }
 
 function Start-ProxyProcess([string]$NodePath, [string]$LogPath) {
     $proxyFile = Join-Path $PSScriptRoot 'proxy.mjs'
     # Let Node open the log as a literal path. Start-Process redirection treats brackets as wildcards.
-    $previousLog = $env:LOCAL_PROXY_SERVER_LOG
+    $previous = @{}
+    foreach ($name in 'LOCAL_PROXY_SERVER_LOG', 'HTTPS_PROXY', 'NODE_USE_SYSTEM_CA') {
+        $previous[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+    }
     [IO.File]::WriteAllText($LogPath, '')
     try {
         $env:LOCAL_PROXY_SERVER_LOG = $LogPath
+        # Use the current Windows proxy when there is no explicit HTTPS proxy for Node.
+        if (-not $env:HTTPS_PROXY) {
+            try {
+                $destination = [uri]'https://api.openai.com/v1/'
+                $systemProxy = [Net.WebRequest]::GetSystemWebProxy().GetProxy($destination)
+                if ($systemProxy -and $systemProxy -ne $destination -and $systemProxy.Scheme -in 'http', 'https') {
+                    $env:HTTPS_PROXY = $systemProxy.AbsoluteUri
+                }
+            } catch { } # Keep direct access available if Windows cannot resolve a proxy.
+        }
+        if (-not $env:NODE_USE_SYSTEM_CA) { $env:NODE_USE_SYSTEM_CA = '1' }
         return Start-Process -FilePath $NodePath -ArgumentList @('"' + $proxyFile + '"') -WindowStyle Hidden -PassThru
     } finally {
-        if ($null -eq $previousLog) { Remove-Item Env:LOCAL_PROXY_SERVER_LOG }
-        else { $env:LOCAL_PROXY_SERVER_LOG = $previousLog }
+        foreach ($name in $previous.Keys) { [Environment]::SetEnvironmentVariable($name, $previous[$name], 'Process') }
     }
 }
 
