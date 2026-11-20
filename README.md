@@ -4,6 +4,7 @@
 
 ## 主要功能
 
+- **请求过滤**：在本地过滤 Codex 身份头和追踪元数据，保留任务正文、工具定义及工具结果，再转发到 OpenAI API。
 - **集中管理 Key**：添加、替换和手动切换 API Key。Key 使用 Windows DPAPI 加密，绑定当前 Windows 用户和电脑。
 - **接入 Codex**：通过 CC Switch 的直连模式导入本地供应商；已有供应商时可同步模型目录。Codex 使用本地令牌连接，真实 API Key 由管理器保管。
 - **选择模型**：用当前 Key 获取模型列表，支持关键词过滤、方向键选择和手动输入。
@@ -21,14 +22,30 @@
 ## 技术实现
 
 ```text
-配置：CC Switch → Codex 供应商配置
-请求：Codex App / CLI ──本地令牌──→ 127.0.0.1:8787 ──API Key──→ OpenAI API
+CC Switch（直连模式）
+    │ 写入 Codex 供应商配置
+    ▼
+Codex App / CLI（标准 Responses 请求）
+    │
+    │ HTTP: http://127.0.0.1:8787/v1/responses
+    ▼
+本机 proxy.mjs
+    ├─ 验证本地令牌
+    ├─ 过滤 Codex 身份头、追踪元数据
+    ├─ 保留任务正文、工具定义和工具结果
+    └─ 换上当前选中的真实 OpenAI API Key
+    │
+    │ HTTPS: https://api.openai.com/v1/responses
+    ▼
+OpenAI 官方 API
+    │
+    └─ 响应经同一本地代理返回 Codex（支持 SSE 流式响应）
 ```
 
 | 组件 | 实现 |
 | --- | --- |
 | **控制台与凭据** · [Manage-Proxy.ps1](Manage-Proxy.ps1) / [ProxyManager.psm1](ProxyManager.psm1) | PowerShell 5.1 提供菜单并启动代理。Key 由 Windows DPAPI 加密后保存在 `.local/vault.json`。Codex 使用固定的本地连接令牌，控制台使用独立的管理令牌切换上游 Key；已经开始的请求继续使用原来的 Key。 |
-| **请求转发** · [proxy.mjs](proxy.mjs) | Node.js 代理只监听本机回环地址，支持模型列表和 Responses 接口。校验本地令牌后，代理用当前 API Key 向 OpenAI 发出 HTTPS 请求。流式响应（SSE）边接收边传回 Codex。 |
+| **请求转发** · [proxy.mjs](proxy.mjs) | Node.js 代理只监听本机回环地址，支持模型列表和 Responses 接口。校验本地令牌后，默认过滤模式会**在 [`cleanHeaders()`](proxy.mjs#L73) 中过滤请求头**：移除 `originator`、`version` 等身份头，替换原始 `User-Agent`，再换入当前 API Key 向 OpenAI 发出 HTTPS 请求。流式响应（SSE）边接收边传回 Codex。 |
 | **配置与模型目录** · [ccswitch-setup.mjs](ccswitch-setup.mjs) / [model-catalog.standard.json](model-catalog.standard.json) | CC Switch 的直连模式只负责配置供应商；请求从 Codex 直接发往本地代理。同步时，管理器先核对生效的供应商，再备份 TOML 并补写 `model_catalog_json`，让目录内的模型使用标准 Responses 格式。菜单 **M** 的模型列表则来自当前 Key 的 `/v1/models`。 |
 | **运行记录** · [proxy.mjs](proxy.mjs) | 代理在本地将请求来源归类为 Desktop、CLI 或 Unknown。控制台通过管理接口读取最近请求；`logs/` 中的 JSONL 审计记录保存分类、模型、状态码与耗时等信息，不保存真实 Key、客户端身份头的原始值或请求与响应正文。 |
 
