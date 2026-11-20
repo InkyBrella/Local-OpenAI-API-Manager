@@ -1,0 +1,31 @@
+# Local data and exported credentials
+.local/
+logs/
+.env
+.env.*
+auth.json
+ccswitch-auth.json
+ccswitch-config.toml
+local-token.txt
+vault.json
+*.bak
+*.pem
+*.key
+*.pfx
+
+# Downloaded runtime, build output and local verification
+.build/
+dist/
+runtime/
+node_modules/
+__pycache__/
+*.zip
+*.exe
+*.log
+*.tmp
+
+# Editors and Windows
+.vscode/
+.idea/
+Thumbs.db
+Desktop.ini

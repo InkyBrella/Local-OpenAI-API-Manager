@@ -1,0 +1,16 @@
+# Reference only. Start-Codex.ps1 already supplies these as one-run CLI overrides.
+# For manual custom-provider setup, use USER config, not project .codex/config.toml.
+# Set CODEX_PROXY_KEY to the local token printed by Start-Codex.ps1 -ProxyOnly.
+model = "gpt-6.1-sol"
+model_provider = "local_probe"
+# REQUIRED with Codex 0.170 models that otherwise use Responses Lite.
+# Set this to the actual absolute path, using forward slashes on Windows:
+model_catalog_json = "C:/Path/To/Local-OpenAI-API-Manager/model-catalog.standard.json"
+
+[model_providers.local_probe]
+name = "Local API probe"
+base_url = "http://127.0.0.1:8787/v1"
+env_key = "CODEX_PROXY_KEY"
+wire_api = "responses"
+requires_openai_auth = false
+supports_websockets = false
