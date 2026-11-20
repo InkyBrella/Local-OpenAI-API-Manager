@@ -4,7 +4,7 @@
 
 ## 主要功能
 
-- **请求过滤**：在本地过滤 Codex 身份头和追踪元数据，保留任务正文、工具定义及工具结果，再转发到 OpenAI API。
+- **请求过滤**：在本地过滤 Codex 身份头和追踪元数据，保留任务正文、工具定义及工具结果，再转发到 OpenAI API，解决“This organization cannot be used for Codex usage because it is enrolled in the monthly API Credits benefit with ChatGPT subscriptions”。
 - **集中管理 Key**：添加、替换和手动切换 API Key。Key 使用 Windows DPAPI 加密，绑定当前 Windows 用户和电脑。
 - **接入 Codex**：通过 CC Switch 的直连模式导入本地供应商；已有供应商时可同步模型目录。Codex 使用本地令牌连接，真实 API Key 由管理器保管。
 - **选择模型**：用当前 Key 获取模型列表，支持关键词过滤、方向键选择和手动输入。
